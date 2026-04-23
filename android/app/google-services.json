@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "465045718",
+    "project_id": "glucoiq-a1e42",
+    "storage_bucket": "glucoiq-a1e42.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:465045718:android:d4e973038df2cbcc37e177",
+        "android_client_info": {
+          "package_name": "com.qnatech.glucosense_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBKhGSoVQZvyBnM1HKao_-nfjq9QKULsFc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,83 @@
+name: glucosense_ai
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management (BLoC)
+  flutter_bloc: ^9.1.1
+  bloc: ^9.1.0
+  equatable: ^2.0.7
+
+  # Networking & API
+  dio: ^5.9.0
+  json_annotation: ^4.9.0
+
+  # Dependency injection
+  get_it: ^8.2.0
+
+  # Navigation
+  go_router: ^16.2.0
+
+  # Supabase (backend / auth / storage alternative)
+  supabase_flutter: ^2.12.0
+
+  # Local & secure storage
+  flutter_secure_storage: ^9.2.4
+  shared_preferences: ^2.5.3
+  path_provider: ^2.1.5
+  firebase_core:
+  firebase_auth:
+  cloud_firestore:
+  firebase_storage:
+
+  # UI & assets
+  cupertino_icons: ^1.0.8
+  cached_network_image: ^3.4.1
+  flutter_svg: ^2.2.3
+  google_fonts: ^6.3.3
+
+  # Utilities
+  intl: ^0.20.2
+  connectivity_plus: ^7.0.0
+  image_picker: ^1.2.1
+  permission_handler: ^12.0.1
+  url_launcher: ^6.3.2
+  uuid: ^4.5.2
+  collection: ^1.19.1
+  google_generative_ai: ^0.4.7
+
+  # Local notifications + timezone (for scheduling reminders)
+  flutter_local_notifications: ^18.0.0
+  flutter_timezone: ^4.1.1
+  timezone: ^0.10.0
+
+  # Local DB for notification history (append-mostly log)
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+  # Code generation
+  build_runner: ^2.5.4
+  json_serializable: ^6.9.5
+
+  # Testing BLoC
+  bloc_test: ^10.0.0
+  mocktail: ^1.0.4
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
