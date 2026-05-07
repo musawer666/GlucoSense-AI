@@ -4,15 +4,38 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/colors/app_colors.dart';
 import '../../../../core/widgets/app_result_dialog.dart';
+import '../../../../core/widgets/app_toast.dart';
 import '../../../profile/domain/entities/user_profile.dart';
 import '../../domain/entities/risk_output.dart';
+import '../../domain/services/saved_ml_risk_mapper.dart';
 import '../bloc/risk_prediction_bloc.dart';
+
+String _fmtRiskSavedAt(DateTime d) {
+  final mm = d.month.toString().padLeft(2, '0');
+  final dd = d.day.toString().padLeft(2, '0');
+  final y = d.year;
+  final hh = d.hour.toString().padLeft(2, '0');
+  final min = d.minute.toString().padLeft(2, '0');
+  return '$mm/$dd/$y · $hh:$min';
+}
+
+enum RiskResultFooterHint { currentSession, savedOnProfile }
+
+String _riskResultFooterCaption(RiskResultFooterHint hint) {
+  switch (hint) {
+    case RiskResultFooterHint.currentSession:
+      return 'Leaving this tab clears this until you run analysis again.';
+    case RiskResultFooterHint.savedOnProfile:
+      return 'Saved to your account — also shown on Home and Log. '
+          'Run analysis again to refresh.';
+  }
+}
 
 /// Risk-analysis content for the Risk Prediction screen.
 ///
 /// All state comes from [RiskPredictionBloc] — this widget is a
-/// pure consumer. Every edit goes through [RiskProfileFieldsPatched]
-/// so Firestore remains the single source of truth.
+/// pure consumer. Editable profile chips dispatch [RiskProfileFieldsPatched]
+/// (Firebase). Latest glucose values are read-only and come from Firestore.
 class AiRiskAnalysisView extends StatelessWidget {
   const AiRiskAnalysisView({super.key});
 
@@ -21,7 +44,8 @@ class AiRiskAnalysisView extends StatelessWidget {
     return BlocConsumer<RiskPredictionBloc, RiskPredictionState>(
       listenWhen: (prev, curr) =>
           prev.errorMessage != curr.errorMessage ||
-          prev.lastMutation != curr.lastMutation,
+          prev.lastMutation != curr.lastMutation ||
+          prev.toastMessage != curr.toastMessage,
       listener: _onStateChanged,
       builder: (context, state) {
         switch (state.status) {
@@ -55,8 +79,19 @@ class AiRiskAnalysisView extends StatelessWidget {
       context.read<RiskPredictionBloc>().add(const RiskMutationAcknowledged());
       return;
     }
+    final toast = state.toastMessage;
+    if (toast != null) {
+      AppToast.show(
+        context,
+        message: toast,
+        variant: state.toastIsError
+            ? AppToastVariant.error
+            : AppToastVariant.info,
+      );
+      context.read<RiskPredictionBloc>().add(const RiskToastAcknowledged());
+      return;
+    }
     if (state.lastMutation != null) {
-      // Silent ack — avoid spamming the user on every chip edit.
       context.read<RiskPredictionBloc>().add(const RiskMutationAcknowledged());
     }
   }
@@ -73,11 +108,48 @@ class _ReadyBlock extends StatelessWidget {
     final profile = state.profile!;
     final missing = state.missingFields;
 
+    final saved = savedMlRiskFromUserProfile(profile);
+    final live = state.result;
+    final display = live ?? saved;
+
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (state.result != null) ...[
-          _ResultCard(result: state.result!),
+        if (display != null) ...[
+          if (live != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Current run',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textSecondary,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            )
+          else if (saved != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                profile.lastMlRiskAt != null
+                    ? 'Last saved · ${_fmtRiskSavedAt(profile.lastMlRiskAt!)}'
+                    : 'Last saved to your profile',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textSecondary,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+          _ResultCard(
+            result: display,
+            footerHint: live != null
+                ? RiskResultFooterHint.currentSession
+                : RiskResultFooterHint.savedOnProfile,
+          ),
           const SizedBox(height: 12),
         ],
         _SectionCard(
@@ -94,11 +166,27 @@ class _ReadyBlock extends StatelessWidget {
         _SectionCard(
           title: 'Latest Glucose Inputs',
           icon: Icons.monitor_heart_outlined,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 6, right: 2),
-            child: _TwoColumnWrap(
-              children: _glucoseChips(context, profile),
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'These values are read-only here. They update from Firestore '
+                'when you log fasting, pre-meal, or post-meal readings on the '
+                'Log tab.',
+                style: GoogleFonts.inter(
+                  fontSize: 12.5,
+                  height: 1.35,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.only(left: 6, right: 2),
+                child: _TwoColumnWrap(
+                  children: _glucoseChips(profile),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 12),
@@ -127,8 +215,7 @@ class _ReadyBlock extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Tap any chip above to fill in the missing value — '
-                  'changes are saved to your account automatically.',
+                  _missingFieldsHint(missing),
                   style: GoogleFonts.inter(color: AppColors.textSecondary),
                 ),
               ],
@@ -136,7 +223,7 @@ class _ReadyBlock extends StatelessWidget {
           ),
         if (missing.isNotEmpty) const SizedBox(height: 12),
         FilledButton.icon(
-          onPressed: state.canRunAnalysis && !state.isUpdating
+          onPressed: state.canTapRunAnalysis
               ? () => context
                   .read<RiskPredictionBloc>()
                   .add(const RiskAnalysisRequested())
@@ -161,7 +248,7 @@ class _ReadyBlock extends StatelessWidget {
     return Stack(
       children: [
         content,
-        if (state.isUpdating)
+        if (state.isUpdating || state.isPredictionLoading)
           Positioned.fill(
             child: ColoredBox(
               color: Colors.white.withValues(alpha: 0.35),
@@ -178,7 +265,31 @@ class _ReadyBlock extends StatelessWidget {
     );
   }
 
-  // ── Chip builders (read-only; dispatch patches on edit) ────────
+  static const _glucoseMissingLabels = {
+    'Fasting glucose reading',
+    'Pre-meal glucose reading',
+    'Post-meal glucose reading',
+  };
+
+  String _missingFieldsHint(List<String> missing) {
+    final needsGlucose =
+        missing.any((e) => _glucoseMissingLabels.contains(e));
+    final needsProfile = missing.any((e) => !_glucoseMissingLabels.contains(e));
+
+    if (needsGlucose && needsProfile) {
+      return 'Use the Log tab to add glucose readings. For other items, tap '
+          'an editable chip under Saved Profile Data — changes sync to '
+          'Firebase automatically.';
+    }
+    if (needsGlucose) {
+      return 'Log fasting, pre-meal, and post-meal readings on the Log tab. '
+          'Those saves update Firestore and will appear here automatically.';
+    }
+    return 'Tap an editable chip under Saved Profile Data — changes are saved '
+        'to Firebase automatically.';
+  }
+
+  // ── Chip builders (profile: editable → Firebase; glucose: read-only) ─
 
   List<Widget> _profileChips(BuildContext context, UserProfile p) {
     return [
@@ -314,7 +425,7 @@ class _ReadyBlock extends StatelessWidget {
     ];
   }
 
-  List<Widget> _glucoseChips(BuildContext context, UserProfile p) {
+  List<Widget> _glucoseChips(UserProfile p) {
     return [
       _EditableDataChip(
         label: 'Fasting',
@@ -322,12 +433,7 @@ class _ReadyBlock extends StatelessWidget {
             ? '${p.latestFastingMgDl} mg/dL'
             : '--',
         icon: Icons.wb_sunny_outlined,
-        onTap: () => _editGlucose(
-          context,
-          title: 'Update fasting glucose',
-          key: 'latestFastingMgDl',
-          initial: p.latestFastingMgDl,
-        ),
+        onTap: null,
       ),
       _EditableDataChip(
         label: 'Pre-Meal',
@@ -335,12 +441,7 @@ class _ReadyBlock extends StatelessWidget {
             ? '${p.latestPreMealMgDl} mg/dL'
             : '--',
         icon: Icons.restaurant_outlined,
-        onTap: () => _editGlucose(
-          context,
-          title: 'Update pre-meal glucose',
-          key: 'latestPreMealMgDl',
-          initial: p.latestPreMealMgDl,
-        ),
+        onTap: null,
       ),
       _EditableDataChip(
         label: 'Post-Meal',
@@ -348,12 +449,7 @@ class _ReadyBlock extends StatelessWidget {
             ? '${p.latestPostMealMgDl} mg/dL'
             : '--',
         icon: Icons.local_dining_outlined,
-        onTap: () => _editGlucose(
-          context,
-          title: 'Update post-meal glucose',
-          key: 'latestPostMealMgDl',
-          initial: p.latestPostMealMgDl,
-        ),
+        onTap: null,
       ),
     ];
   }
@@ -434,26 +530,6 @@ class _ReadyBlock extends StatelessWidget {
     if (selected == null) return;
     if (!context.mounted) return;
     _dispatch(context, onSave(selected));
-  }
-
-  Future<void> _editGlucose(
-    BuildContext context, {
-    required String title,
-    required String key,
-    required int? initial,
-  }) async {
-    final raw = await _showTextSheet(
-      context,
-      title: title,
-      initial: initial?.toString() ?? '',
-      keyboardType: TextInputType.number,
-      suffix: 'mg/dL',
-    );
-    if (raw == null) return;
-    final v = int.tryParse(raw.trim());
-    if (v == null || v < 40 || v > 500) return;
-    if (!context.mounted) return;
-    _dispatch(context, {key: v});
   }
 
   void _dispatch(BuildContext context, Map<String, dynamic> patch) {
@@ -592,9 +668,13 @@ class _MissingProfileBlock extends StatelessWidget {
 // ── Result card ───────────────────────────────────────────────────
 
 class _ResultCard extends StatelessWidget {
-  const _ResultCard({required this.result});
+  const _ResultCard({
+    required this.result,
+    required this.footerHint,
+  });
 
   final RiskOutput result;
+  final RiskResultFooterHint footerHint;
 
   @override
   Widget build(BuildContext context) {
@@ -674,12 +754,63 @@ class _ResultCard extends StatelessWidget {
               ),
             ),
           ),
+          if (result.classProbabilitiesPercent != null &&
+              result.classProbabilitiesPercent!.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Model probabilities',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.85),
+                letterSpacing: 0.3,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: result.classProbabilitiesPercent!.entries.map((e) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Text(
+                    '${e.key}  ${e.value.toStringAsFixed(1)}%',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
           const SizedBox(height: 10),
           Text(
             result.explanation,
             style: GoogleFonts.inter(
               height: 1.45,
               color: Colors.white.withValues(alpha: 0.94),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _riskResultFooterCaption(footerHint),
+            style: GoogleFonts.inter(
+              fontSize: 11.5,
+              height: 1.35,
+              fontStyle: FontStyle.italic,
+              color: Colors.white.withValues(alpha: 0.72),
             ),
           ),
         ],
@@ -728,94 +859,101 @@ class _EditableDataChip extends StatelessWidget {
     required this.label,
     required this.value,
     required this.icon,
-    required this.onTap,
+    this.onTap,
   });
 
   final String label;
   final String value;
   final IconData icon;
-  final VoidCallback onTap;
+  /// When null, the chip is read-only (e.g. glucose from Firestore only).
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final palette = _chipPalette(label);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          constraints: const BoxConstraints(minWidth: 152, minHeight: 74),
-          padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
-          decoration: BoxDecoration(
-            color: palette.background,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: palette.border, width: 1.4),
-            boxShadow: [
-              BoxShadow(
-                color: palette.shadow.withValues(alpha: 0.18),
-                blurRadius: 7,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: palette.border),
+    final readOnly = onTap == null;
+    return Tooltip(
+      message: readOnly
+          ? 'Synced from Firestore when you log readings'
+          : 'Tap to edit (saved to Firebase)',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 152, minHeight: 74),
+            padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+            decoration: BoxDecoration(
+              color: palette.background,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: palette.border, width: 1.4),
+              boxShadow: [
+                BoxShadow(
+                  color: palette.shadow.withValues(alpha: 0.18),
+                  blurRadius: 7,
+                  offset: const Offset(0, 2),
                 ),
-                child: Icon(icon, size: 16, color: palette.iconColor),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: palette.titleColor,
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: palette.border),
+                  ),
+                  child: Icon(icon, size: 16, color: palette.iconColor),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: palette.titleColor,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: palette.valueColor,
+                      const SizedBox(height: 2),
+                      Text(
+                        value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: palette.valueColor,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: AppColors.neutral300),
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: AppColors.neutral300),
+                  ),
+                  child: Icon(
+                    readOnly ? Icons.cloud_done_outlined : Icons.edit_outlined,
+                    size: 12,
+                    color: palette.iconColor.withValues(alpha: 0.78),
+                  ),
                 ),
-                child: Icon(
-                  Icons.edit_outlined,
-                  size: 12,
-                  color: palette.iconColor.withValues(alpha: 0.78),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

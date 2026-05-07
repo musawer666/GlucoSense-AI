@@ -13,6 +13,7 @@ class RiskOutput extends Equatable {
     required this.confidence,
     required this.explanation,
     required this.score,
+    this.classProbabilitiesPercent,
   });
 
   final RiskLevel level;
@@ -25,6 +26,10 @@ class RiskOutput extends Equatable {
   /// Raw heuristic score, useful for debugging and future analytics.
   final double score;
 
+  /// XGBoost class probabilities (`0..100`) when the remote model returns them.
+  final Map<String, double>? classProbabilitiesPercent;
+
   @override
-  List<Object?> get props => [level, label, confidence, explanation, score];
+  List<Object?> get props =>
+      [level, label, confidence, explanation, score, classProbabilitiesPercent];
 }

@@ -7,6 +7,7 @@ import '../../../../core/widgets/app_result_dialog.dart';
 import '../../../../core/widgets/gluco_sliver_app_bar.dart';
 import '../../../../core/widgets/soft_blob_background.dart';
 import '../../../auth/data/datasources/auth_remote_data_source.dart';
+import '../../../reminders/presentation/widgets/gluco_app_bar_reminders_actions.dart';
 import '../../../auth/data/repositories/auth_repository_impl.dart';
 import '../../../auth/domain/repositories/auth_repository.dart';
 import '../../../profile/data/datasources/profile_remote_data_source.dart';
@@ -417,10 +418,11 @@ class _MedicalDetailsViewState extends State<_MedicalDetailsView> {
                         parent: AlwaysScrollableScrollPhysics(),
                       ),
                       slivers: [
-                        const GlucoSliverAppBar(
+                        GlucoSliverAppBar(
                           title: 'Medical details',
                           subtitle: 'Conditions, lifestyle & clinical info',
                           showBackButton: true,
+                          actions: glucoAppBarRemindersActions(),
                         ),
                         SliverPadding(
                           padding: EdgeInsets.fromLTRB(hPad, 10, hPad, gap),

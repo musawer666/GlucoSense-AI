@@ -10,12 +10,11 @@ import '../../../../log_reading/domain/glucose_log_entry.dart';
 import '../../../../log_reading/data/datasources/glucose_log_remote_data_source.dart';
 import '../../../../log_reading/data/repositories/glucose_log_repository_impl.dart';
 import '../../../../meal/presentation/widgets/home_saved_meals_section.dart';
-import '../../../../profile/data/datasources/profile_remote_data_source.dart';
-import '../../../../profile/data/repositories/profile_repository_impl.dart';
 import '../../../../profile/domain/entities/user_profile.dart';
-import '../../../../risk_prediction/domain/usecases/compute_missing_risk_fields.dart';
-import '../../../../risk_prediction/domain/usecases/predict_risk.dart';
-import '../../../../trends/presentation/pages/trends_screen.dart';
+import '../../../../profile/presentation/cubit/shell_profile_cubit.dart';
+import '../../../../reminders/presentation/widgets/gluco_app_bar_reminders_actions.dart';
+import '../../../../risk_prediction/domain/services/glucoiq_ml_inference_input_builder.dart';
+import '../../../../risk_prediction/domain/services/saved_ml_risk_mapper.dart';
 import '../../bloc/home_bloc.dart';
 import '../../widgets/current_glucose_card.dart';
 import '../../widgets/home_action_card.dart';
@@ -44,10 +43,8 @@ class HomeTabScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider<HomeBloc>(
-      create: (_) => HomeBloc(
-        profileRepository: ProfileRepositoryImpl(
-          remoteDataSource: ProfileRemoteDataSourceImpl(),
-        ),
+      create: (context) => HomeBloc(
+        shellProfileCubit: context.read<ShellProfileCubit>(),
         authRepository: AuthRepositoryImpl(
           remoteDataSource: AuthRemoteDataSourceImpl(),
         ),
@@ -95,9 +92,10 @@ class _HomeTabView extends StatelessWidget {
                 child: HomeAppBarAvatar(
                   avatarUrl: state.profile?.avatarUrl,
                   initial: avatarInitial,
-                  onTap: () => onSwitchTab?.call(4),
+                  onTap: () => onSwitchTab?.call(5),
                 ),
               ),
+              actions: glucoAppBarRemindersActions(),
             ),
             SliverToBoxAdapter(
               child: Padding(
@@ -122,8 +120,11 @@ class _HomeTabView extends StatelessWidget {
                     ),
                     const SizedBox(height: 18),
                     HomeRiskCard(
-                      output: predictRisk(state.profile),
-                      missingFields: computeMissingRiskFields(state.profile),
+                      output: savedMlRiskFromUserProfile(state.profile),
+                      missingFields:
+                          GlucoiqMlInferenceInputBuilder.missingFieldsForMl(
+                        state.profile,
+                      ),
                       onTap: () => onSwitchTab?.call(3),
                     ),
                     const SizedBox(height: 22),
@@ -150,11 +151,7 @@ class _HomeTabView extends StatelessWidget {
                       subtitle: 'View trend analysis',
                       icon: Icons.insights_rounded,
                       accentColor: AppColors.tertiary500,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const TrendsScreen(),
-                        ),
-                      ),
+                      onTap: () => onSwitchTab?.call(4),
                     ),
                   ],
                 ),

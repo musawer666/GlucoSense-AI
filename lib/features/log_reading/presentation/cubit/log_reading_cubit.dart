@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/errors/failures.dart';
+import '../../../../core/services/reminder_scheduler.dart';
 import '../../../auth/domain/repositories/auth_repository.dart';
+import '../../../profile/presentation/cubit/shell_profile_cubit.dart';
 import '../../domain/glucose_log_entry.dart';
 import '../../domain/repositories/glucose_log_repository.dart';
 import 'log_reading_state.dart';
@@ -22,12 +24,15 @@ class LogReadingCubit extends Cubit<LogReadingState> {
   LogReadingCubit({
     required this.logRepository,
     required this.authRepository,
+    required this.shellProfileCubit,
   }) : super(LogReadingState.initial());
 
   final GlucoseLogRepository logRepository;
   final AuthRepository authRepository;
+  final ShellProfileCubit shellProfileCubit;
 
   StreamSubscription<List<GlucoseLogEntry>>? _sub;
+  StreamSubscription<ShellProfileState>? _shellSub;
   String? _uid;
 
   /// Starts listening to the logged-in user's `glucose_logs`
@@ -76,6 +81,15 @@ class LogReadingCubit extends Cubit<LogReadingState> {
         ));
       },
     );
+
+    await _shellSub?.cancel();
+    void applyShell(ShellProfileState s) {
+      if (isClosed) return;
+      emit(state.copyWith(profile: s.profile));
+    }
+
+    applyShell(shellProfileCubit.state);
+    _shellSub = shellProfileCubit.stream.listen(applyShell);
   }
 
   // ── Form mutations ─────────────────────────────────────────────
@@ -154,8 +168,14 @@ class LogReadingCubit extends Cubit<LogReadingState> {
     ));
 
     try {
-      await logRepository.save(uid, entry);
+      final saved = await logRepository.save(uid, entry);
       if (isClosed) return;
+
+      // Fire-and-forget: let the reminder scheduler cancel any pending
+      // upcoming alarm that this log has just satisfied. Any failure
+      // here must not affect the save result the user sees.
+      unawaited(_safeNotifyScheduler(saved));
+
       // The stream will re-emit the updated list; just flip UI to
       // "saved" + clear the form so the user can log another one.
       emit(state.copyWith(
@@ -183,10 +203,33 @@ class LogReadingCubit extends Cubit<LogReadingState> {
     emit(state.copyWith(uiStatus: LogReadingUiStatus.idle));
   }
 
+  /// Pre-fills the form from a notification deeplink payload.
+  /// The user still has to enter a glucose value and hit save.
+  void applyDeeplink({
+    required GlucoseReadingType readingType,
+    required MealLogTag mealTag,
+  }) {
+    emit(state.copyWith(
+      readingType: readingType,
+      mealTag: mealTag,
+      clearValidation: true,
+    ));
+  }
+
+  Future<void> _safeNotifyScheduler(GlucoseLogEntry entry) async {
+    try {
+      await ReminderScheduler.instance.onLogSaved(entry);
+    } catch (_) {
+      // Notification cancellation failures are non-fatal.
+    }
+  }
+
   @override
   Future<void> close() async {
     await _sub?.cancel();
     _sub = null;
+    await _shellSub?.cancel();
+    _shellSub = null;
     return super.close();
   }
 }

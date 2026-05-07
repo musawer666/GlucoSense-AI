@@ -58,6 +58,13 @@ class UserProfile extends Equatable {
     this.avatarUrl,
     this.profileComplete = false,
     this.profileCompletedAt,
+
+    /// Last GlucoIQ `/predict` snapshot persisted on `users/{uid}`.
+    this.lastMlRiskCategory,
+    this.lastMlRiskConfidence,
+    this.lastMlRiskAdvice,
+    this.lastMlRiskProbabilities,
+    this.lastMlRiskAt,
   });
 
   final String uid;
@@ -103,6 +110,12 @@ class UserProfile extends Equatable {
   final bool profileComplete;
   final DateTime? profileCompletedAt;
 
+  final String? lastMlRiskCategory;
+  final int? lastMlRiskConfidence;
+  final String? lastMlRiskAdvice;
+  final Map<String, double>? lastMlRiskProbabilities;
+  final DateTime? lastMlRiskAt;
+
   /// Field-level copy. `null` on a named parameter keeps the
   /// existing value; use the `clearXxx` flags to explicitly drop a
   /// nullable field.
@@ -134,6 +147,11 @@ class UserProfile extends Equatable {
     String? avatarUrl,
     bool? profileComplete,
     DateTime? profileCompletedAt,
+    String? lastMlRiskCategory,
+    int? lastMlRiskConfidence,
+    String? lastMlRiskAdvice,
+    Map<String, double>? lastMlRiskProbabilities,
+    DateTime? lastMlRiskAt,
     bool clearAvatarUrl = false,
     bool clearHba1c = false,
     bool clearMedication = false,
@@ -184,6 +202,13 @@ class UserProfile extends Equatable {
       avatarUrl: clearAvatarUrl ? null : (avatarUrl ?? this.avatarUrl),
       profileComplete: profileComplete ?? this.profileComplete,
       profileCompletedAt: profileCompletedAt ?? this.profileCompletedAt,
+      lastMlRiskCategory: lastMlRiskCategory ?? this.lastMlRiskCategory,
+      lastMlRiskConfidence:
+          lastMlRiskConfidence ?? this.lastMlRiskConfidence,
+      lastMlRiskAdvice: lastMlRiskAdvice ?? this.lastMlRiskAdvice,
+      lastMlRiskProbabilities:
+          lastMlRiskProbabilities ?? this.lastMlRiskProbabilities,
+      lastMlRiskAt: lastMlRiskAt ?? this.lastMlRiskAt,
     );
   }
 
@@ -216,5 +241,10 @@ class UserProfile extends Equatable {
         avatarUrl,
         profileComplete,
         profileCompletedAt,
+        lastMlRiskCategory,
+        lastMlRiskConfidence,
+        lastMlRiskAdvice,
+        lastMlRiskProbabilities,
+        lastMlRiskAt,
       ];
 }

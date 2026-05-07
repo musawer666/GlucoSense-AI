@@ -12,25 +12,14 @@ final class ProfileSubscribed extends ProfileEvent {
   const ProfileSubscribed();
 }
 
-/// Internal — delivered by the Bloc itself whenever the underlying
-/// Firestore stream emits. Keeps the public API clean.
-final class _ProfileSnapshotReceived extends ProfileEvent {
-  const _ProfileSnapshotReceived(this.profile);
+/// Internal — shared shell profile stream.
+final class _ProfileShellProfileChanged extends ProfileEvent {
+  const _ProfileShellProfileChanged(this.shell);
 
-  final UserProfile? profile;
-
-  @override
-  List<Object?> get props => [profile];
-}
-
-/// Internal — delivered when the stream errors out.
-final class _ProfileSnapshotFailed extends ProfileEvent {
-  const _ProfileSnapshotFailed(this.message);
-
-  final String message;
+  final ShellProfileState shell;
 
   @override
-  List<Object?> get props => [message];
+  List<Object?> get props => [shell];
 }
 
 /// Partial merge of a handful of fields onto the user's profile

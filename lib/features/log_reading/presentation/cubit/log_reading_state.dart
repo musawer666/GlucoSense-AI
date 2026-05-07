@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import '../../../profile/domain/entities/user_profile.dart';
 import '../../domain/glucose_log_entry.dart';
 
 enum LogReadingUiStatus {
@@ -14,6 +15,7 @@ class LogReadingState extends Equatable {
   const LogReadingState({
     this.uiStatus = LogReadingUiStatus.idle,
     this.recentLogs = const [],
+    this.profile,
     this.readingType = GlucoseReadingType.preMeal,
     this.mealTag = MealLogTag.lunch,
     this.glucoseText = '',
@@ -25,6 +27,7 @@ class LogReadingState extends Equatable {
 
   final LogReadingUiStatus uiStatus;
   final List<GlucoseLogEntry> recentLogs;
+  final UserProfile? profile;
   final GlucoseReadingType readingType;
   final MealLogTag mealTag;
   final String glucoseText;
@@ -36,6 +39,7 @@ class LogReadingState extends Equatable {
   LogReadingState copyWith({
     LogReadingUiStatus? uiStatus,
     List<GlucoseLogEntry>? recentLogs,
+    UserProfile? profile,
     GlucoseReadingType? readingType,
     MealLogTag? mealTag,
     String? glucoseText,
@@ -49,6 +53,7 @@ class LogReadingState extends Equatable {
     return LogReadingState(
       uiStatus: uiStatus ?? this.uiStatus,
       recentLogs: recentLogs ?? this.recentLogs,
+      profile: profile ?? this.profile,
       readingType: readingType ?? this.readingType,
       mealTag: mealTag ?? this.mealTag,
       glucoseText: glucoseText ?? this.glucoseText,
@@ -68,6 +73,7 @@ class LogReadingState extends Equatable {
   List<Object?> get props => [
         uiStatus,
         recentLogs,
+        profile,
         readingType,
         mealTag,
         glucoseText,

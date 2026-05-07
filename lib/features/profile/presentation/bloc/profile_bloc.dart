@@ -7,28 +7,24 @@ import '../../../../core/errors/failures.dart';
 import '../../../auth/domain/repositories/auth_repository.dart';
 import '../../domain/entities/user_profile.dart';
 import '../../domain/repositories/profile_repository.dart';
+import '../cubit/shell_profile_cubit.dart';
 
 part 'profile_event.dart';
 part 'profile_state.dart';
 
 /// Drives the Profile tab.
 ///
-/// Subscribes to a live Firestore snapshot so any remote mutation
-/// (edits made on this device, on another device, or the initial
-/// profile-setup write) is reflected in the UI immediately.
-///
-/// Field edits and avatar uploads are routed through
-/// [ProfileRepository] and re-enter the UI via the snapshot stream
-/// — there is no local mutation of [ProfileState.profile] to avoid
-/// drift between the UI and Firestore.
+/// Profile data follows [ShellProfileCubit] (shared with other shell tabs).
+/// Field edits and avatar uploads go through [ProfileRepository]; Firestore
+/// echoes writes back through the same shell listener.
 class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   ProfileBloc({
     required this.profileRepository,
     required this.authRepository,
+    required this.shellProfileCubit,
   }) : super(const ProfileState()) {
     on<ProfileSubscribed>(_onSubscribed);
-    on<_ProfileSnapshotReceived>(_onSnapshot);
-    on<_ProfileSnapshotFailed>(_onSnapshotFailed);
+    on<_ProfileShellProfileChanged>(_onShellProfileChanged);
     on<ProfileFieldsUpdated>(_onFieldsUpdated);
     on<ProfileAvatarChanged>(_onAvatarChanged);
     on<ProfileMutationAcknowledged>(_onMutationAck);
@@ -36,8 +32,9 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
   final ProfileRepository profileRepository;
   final AuthRepository authRepository;
+  final ShellProfileCubit shellProfileCubit;
 
-  StreamSubscription<UserProfile?>? _sub;
+  StreamSubscription<ShellProfileState>? _shellSub;
 
   String? _uid;
 
@@ -57,45 +54,61 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
     emit(state.copyWith(status: ProfileStatus.loading, clearError: true));
 
-    await _sub?.cancel();
-    _sub = profileRepository.watchProfile(user.uid).listen(
-      (profile) => add(_ProfileSnapshotReceived(profile)),
-      onError: (Object error) {
-        final message = error is Failure
-            ? error.message
-            : 'Failed to load your profile.';
-        add(_ProfileSnapshotFailed(message));
-      },
-    );
+    await _shellSub?.cancel();
+    void forward(ShellProfileState shell) =>
+        add(_ProfileShellProfileChanged(shell));
+    forward(shellProfileCubit.state);
+    _shellSub = shellProfileCubit.stream.listen(forward);
   }
 
-  void _onSnapshot(
-    _ProfileSnapshotReceived event,
+  void _onShellProfileChanged(
+    _ProfileShellProfileChanged event,
     Emitter<ProfileState> emit,
   ) {
-    if (event.profile == null) {
-      emit(state.copyWith(
-        status: ProfileStatus.missing,
-        clearProfile: true,
-        clearError: true,
-      ));
-      return;
+    final shell = event.shell;
+    switch (shell.status) {
+      case ShellProfileStatus.signedOut:
+        emit(state.copyWith(
+          status: ProfileStatus.failure,
+          errorMessage: 'You need to be signed in to view your profile.',
+          clearProfile: true,
+        ));
+        break;
+      case ShellProfileStatus.initial:
+      case ShellProfileStatus.loading:
+        emit(state.copyWith(status: ProfileStatus.loading, clearError: true));
+        break;
+      case ShellProfileStatus.failure:
+        emit(state.copyWith(
+          status: ProfileStatus.failure,
+          errorMessage: shell.errorMessage ??
+              'Failed to load your profile.',
+        ));
+        break;
+      case ShellProfileStatus.missingProfile:
+        emit(state.copyWith(
+          status: ProfileStatus.missing,
+          clearProfile: true,
+          clearError: true,
+        ));
+        break;
+      case ShellProfileStatus.ready:
+        final profile = shell.profile;
+        if (profile == null) {
+          emit(state.copyWith(
+            status: ProfileStatus.missing,
+            clearProfile: true,
+            clearError: true,
+          ));
+        } else {
+          emit(state.copyWith(
+            status: ProfileStatus.ready,
+            profile: profile,
+            clearError: true,
+          ));
+        }
+        break;
     }
-    emit(state.copyWith(
-      status: ProfileStatus.ready,
-      profile: event.profile,
-      clearError: true,
-    ));
-  }
-
-  void _onSnapshotFailed(
-    _ProfileSnapshotFailed event,
-    Emitter<ProfileState> emit,
-  ) {
-    emit(state.copyWith(
-      status: ProfileStatus.failure,
-      errorMessage: event.message,
-    ));
   }
 
   Future<void> _onFieldsUpdated(
@@ -179,8 +192,8 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
   @override
   Future<void> close() async {
-    await _sub?.cancel();
-    _sub = null;
+    await _shellSub?.cancel();
+    _shellSub = null;
     return super.close();
   }
 }

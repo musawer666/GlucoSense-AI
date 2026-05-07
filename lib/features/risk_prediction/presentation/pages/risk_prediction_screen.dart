@@ -8,7 +8,11 @@ import '../../../auth/data/datasources/auth_remote_data_source.dart';
 import '../../../auth/data/repositories/auth_repository_impl.dart';
 import '../../../profile/data/datasources/profile_remote_data_source.dart';
 import '../../../profile/data/repositories/profile_repository_impl.dart';
-import '../../../trends/presentation/pages/trends_screen.dart';
+import '../../../profile/presentation/cubit/shell_profile_cubit.dart';
+import '../../../reminders/presentation/widgets/gluco_app_bar_reminders_actions.dart';
+import '../../data/datasources/glucoiq_ml_remote_data_source.dart';
+import '../../data/datasources/inference_api_config_remote_data_source.dart';
+import '../../data/repositories/ml_inference_repository_impl.dart';
 import '../bloc/risk_prediction_bloc.dart';
 import '../widgets/ai_risk_analysis_view.dart';
 
@@ -20,13 +24,18 @@ class RiskPredictionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider<RiskPredictionBloc>(
-      create: (_) => RiskPredictionBloc(
+      create: (context) => RiskPredictionBloc(
         profileRepository: ProfileRepositoryImpl(
           remoteDataSource: ProfileRemoteDataSourceImpl(),
         ),
         authRepository: AuthRepositoryImpl(
           remoteDataSource: AuthRemoteDataSourceImpl(),
         ),
+        mlInferenceRepository: MlInferenceRepositoryImpl(
+          configDataSource: InferenceApiConfigRemoteDataSourceImpl(),
+          mlRemoteDataSource: GlucoiqMlRemoteDataSourceImpl(),
+        ),
+        shellProfileCubit: context.read<ShellProfileCubit>(),
       )..add(const RiskSubscribed()),
       child: const _RiskPredictionView(),
     );
@@ -81,7 +90,10 @@ class _RiskPredictionView extends StatelessWidget {
             ),
             CustomScrollView(
               slivers: [
-                const GlucoSliverAppBar(title: 'Risk Prediction'),
+                GlucoSliverAppBar(
+                  title: 'Risk Prediction',
+                  actions: glucoAppBarRemindersActions(),
+                ),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(pad, 18, pad, 20),
@@ -150,39 +162,6 @@ class _HeaderCard extends StatelessWidget {
               fontSize: (width * 0.038).clamp(13.5, 15.0),
               height: 1.45,
               color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: AppColors.primary600,
-                borderRadius: BorderRadius.circular(999),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary300.withValues(alpha: 0.55),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: TextButton.icon(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const TrendsScreen(),
-                  ),
-                ),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.onPrimary,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                ),
-                icon: const Icon(Icons.insights_rounded),
-                label: const Text('Open Trends'),
-              ),
             ),
           ),
         ],

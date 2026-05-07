@@ -5,6 +5,7 @@ import '../../../../core/colors/app_colors.dart';
 import '../../../../core/widgets/app_toast.dart';
 import '../../../../core/widgets/gluco_sliver_app_bar.dart';
 import '../../../../core/widgets/soft_blob_background.dart';
+import '../../../reminders/presentation/widgets/gluco_app_bar_reminders_actions.dart';
 import '../../../profile/data/user_profile_store.dart';
 import '../utils/bmi_utils.dart';
 import '../widgets/avatar/profile_avatar_picker.dart';
@@ -143,9 +144,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             return CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                const GlucoSliverAppBar(
+                GlucoSliverAppBar(
                   title: 'Tell us about you',
                   subtitle: 'Set up your profile',
+                  actions: glucoAppBarRemindersActions(),
                 ),
                 SliverToBoxAdapter(
                   child: Padding(

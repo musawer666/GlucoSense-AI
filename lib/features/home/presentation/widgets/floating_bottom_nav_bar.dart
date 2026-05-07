@@ -18,6 +18,7 @@ class FloatingBottomNavBar extends StatelessWidget {
     _NavSpec(icon: Icons.add_circle_outline_rounded, label: 'Log'),
     _NavSpec(icon: Icons.restaurant_rounded, label: 'Meal'),
     _NavSpec(icon: Icons.auto_graph_rounded, label: 'Risk'),
+    _NavSpec(icon: Icons.insights_rounded, label: 'Trends'),
     _NavSpec(icon: Icons.person_outline_rounded, label: 'Profile'),
   ];
 

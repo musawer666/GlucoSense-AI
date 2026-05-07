@@ -5,6 +5,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -24,6 +25,29 @@ class NotificationService {
   NotificationService._internal();
   static final NotificationService instance = NotificationService._internal();
 
+  // ─────────────────────────────────────────────────────────
+  // CHANNEL IDS
+  //
+  // ⚠️  NEVER reuse an old channel id after changing its
+  // settings (importance / sound / vibration). Android FREEZES
+  // channel config on first creation — the only way to ship
+  // new settings is to use a new id and delete the old one.
+  // Bump the `_v` suffix whenever you change channel config.
+  // ─────────────────────────────────────────────────────────
+  static const String remindersChannelId = 'glucosense_reminders_v2';
+  static const String mealsChannelId = 'glucosense_meals_v2';
+  static const String hydrationChannelId = 'glucosense_hydration_v2';
+  static const String sleepChannelId = 'glucosense_sleep_v2';
+
+  /// Legacy IDs we need to evict from the OS so their stale
+  /// (silent) settings stop overriding notifications.
+  static const List<String> _legacyChannelIds = [
+    'reminders_channel',
+    'meal_channel',
+    'hydration_channel',
+    'sleep_channel',
+  ];
+
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
@@ -35,6 +59,11 @@ class NotificationService {
 
   bool get exactAlarmGranted => _exactAlarmGranted;
   bool get alarmManagerReady => _alarmManagerReady;
+
+  /// Optional hook for higher-level code (e.g. [ReminderScheduler]) to
+  /// intercept the raw payload on every foreground notification tap.
+  /// Kept as a plain callback to avoid circular dependencies.
+  void Function(NotificationResponse response)? onForegroundTap;
 
   // ─────────────────────────────────────────────────────────
   // INIT
@@ -105,54 +134,24 @@ class NotificationService {
       final android = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
       if (android != null) {
-        await android.createNotificationChannel(
-          const AndroidNotificationChannel(
-            'hydration_channel',
-            'Hydration Reminders',
-            description: 'Reminders to drink water',
-            importance: Importance.high,
-            playSound: true,
-            enableVibration: true,
-          ),
-        );
-
-        await android.createNotificationChannel(
-          const AndroidNotificationChannel(
-            'sleep_channel',
-            'Sleep Reminders',
-            description: 'Sleep and wake up reminders',
-            importance: Importance.high,
-            playSound: true,
-            enableVibration: true,
-          ),
-        );
-
-        await android.createNotificationChannel(
-          const AndroidNotificationChannel(
-            'reminders_channel',
-            'Reminders',
-            description: 'General reminders',
-            importance: Importance.high,
-          ),
-        );
-
-        await android.createNotificationChannel(
-          const AndroidNotificationChannel(
-            'meal_channel',
-            'Meal Plan Reminders',
-            description:
-                'Meal plan generated + breakfast/lunch/dinner reminders',
-            importance: Importance.high,
-            playSound: true,
-            enableVibration: true,
-          ),
-        );
+        await _setupAndroidChannels(android);
 
         try {
-          final notifGranted = await android.requestNotificationsPermission();
-          debugPrint('🔔 Android notification permission: $notifGranted');
+          final pluginGranted = await android.requestNotificationsPermission();
+          debugPrint('🔔 plugin notification permission: $pluginGranted');
         } catch (e) {
-          debugPrint('⚠️ requestNotificationsPermission: $e');
+          debugPrint('⚠️ plugin requestNotificationsPermission: $e');
+        }
+
+        // Double-up via permission_handler. On devices where the
+        // plugin's request returns a stale `false` (e.g. already
+        // denied once), this is the only reliable path to reach
+        // the system dialog or to detect a permanent denial.
+        try {
+          final status = await Permission.notification.request();
+          debugPrint('🔔 system notification permission: $status');
+        } catch (e) {
+          debugPrint('⚠️ permission_handler notification: $e');
         }
 
         await _checkAndRequestExactAlarm(android);
@@ -180,6 +179,11 @@ class NotificationService {
   void _onNotificationFired(NotificationResponse response) {
     debugPrint('🔔 Tap: ${response.payload}');
     _saveDeliveredFromPayload(response.payload);
+    try {
+      onForegroundTap?.call(response);
+    } catch (e) {
+      debugPrint('⚠️ onForegroundTap handler threw: $e');
+    }
   }
 
   /// Parse payload and save to history — only for tapped/delivered notifications.
@@ -225,6 +229,75 @@ class NotificationService {
     }
   }
 
+  /// Creates our current-version channels and removes any legacy
+  /// channels whose frozen OS settings would otherwise silence us.
+  ///
+  /// Android locks a channel's behavior (importance, sound, vibration,
+  /// visibility) the moment it's first created. Attempting to
+  /// `createNotificationChannel()` again with new settings is a no-op.
+  /// To ship new behavior we publish a brand-new id and evict the old
+  /// one from the system settings so users see the new channel only.
+  Future<void> _setupAndroidChannels(
+    AndroidFlutterLocalNotificationsPlugin android,
+  ) async {
+    // 1) Delete legacy channels so notifications can never fall back
+    //    onto their stale, silenced config.
+    for (final legacyId in _legacyChannelIds) {
+      try {
+        await android.deleteNotificationChannel(legacyId);
+      } catch (_) {
+        // Deletion fails silently when the channel doesn't exist —
+        // that's fine.
+      }
+    }
+
+    // 2) Create fresh channels with the behavior we actually want.
+    final channels = <AndroidNotificationChannel>[
+      const AndroidNotificationChannel(
+        remindersChannelId,
+        'Reminders',
+        description: 'Glucose logging and fasting reminders',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        enableLights: true,
+        showBadge: true,
+      ),
+      const AndroidNotificationChannel(
+        mealsChannelId,
+        'Meal Reminders',
+        description: 'Pre- and post-meal glucose check-ins',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        enableLights: true,
+        showBadge: true,
+      ),
+      const AndroidNotificationChannel(
+        hydrationChannelId,
+        'Hydration',
+        description: 'Reminders to drink water',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      ),
+      const AndroidNotificationChannel(
+        sleepChannelId,
+        'Sleep',
+        description: 'Sleep and wake up reminders',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      ),
+    ];
+
+    for (final c in channels) {
+      await android.createNotificationChannel(c);
+    }
+
+    debugPrint('🔔 Channels ready: ${channels.map((c) => c.id).join(', ')}');
+  }
+
   Future<bool> recheckExactAlarmPermission() async {
     if (!Platform.isAndroid) return true;
 
@@ -240,6 +313,107 @@ class NotificationService {
     } catch (_) {
       _exactAlarmGranted = true;
       return true;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // OS-LEVEL NOTIFICATION PERMISSION (Android 13+)
+  //
+  // Without POST_NOTIFICATIONS granted, NOTHING shows up — not
+  // heads-up, not shade, not sound. The plugin's
+  // `requestNotificationsPermission` only shows the system dialog
+  // the FIRST time; after a denial the OS silently returns false
+  // forever. That's why we expose a forced-request + settings-
+  // fallback path through permission_handler here.
+  // ─────────────────────────────────────────────────────────
+
+  /// `true` if the user has enabled notifications for this app at
+  /// the OS level. On non-Android platforms assumes `true` — the
+  /// plugin handles iOS permissions on its own.
+  Future<bool> areNotificationsEnabled() async {
+    if (kIsWeb || !Platform.isAndroid) return true;
+
+    try {
+      final status = await Permission.notification.status;
+      if (status.isGranted) return true;
+    } catch (_) {}
+
+    try {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final enabled = await android?.areNotificationsEnabled();
+      return enabled ?? false;
+    } catch (e) {
+      debugPrint('⚠️ areNotificationsEnabled: $e');
+      return false;
+    }
+  }
+
+  /// Prompts the user for POST_NOTIFICATIONS. Returns the final
+  /// granted state. If the user has already permanently denied,
+  /// surfaces `false` — callers should then offer
+  /// [openAppSettingsPage] as a fallback.
+  Future<bool> requestNotificationPermission() async {
+    if (kIsWeb || !Platform.isAndroid) return true;
+    try {
+      final status = await Permission.notification.request();
+      debugPrint('🔔 notification permission: $status');
+      return status.isGranted;
+    } catch (e) {
+      debugPrint('⚠️ requestNotificationPermission: $e');
+      return false;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // BATTERY OPTIMISATION — required for reliable delivery on
+  // aggressive OEMs (Samsung One UI, Xiaomi MIUI, Oppo ColorOS,
+  // Vivo FuntouchOS). Without this, scheduled alarms get silently
+  // dropped when the app is backgrounded / screen off.
+  // ─────────────────────────────────────────────────────────
+
+  /// Returns `true` when the app is whitelisted from Doze / battery
+  /// optimisation. On non-Android platforms always returns `true`.
+  Future<bool> isIgnoringBatteryOptimizations() async {
+    if (kIsWeb || !Platform.isAndroid) return true;
+    try {
+      final status = await Permission.ignoreBatteryOptimizations.status;
+      return status.isGranted;
+    } catch (e) {
+      debugPrint('⚠️ isIgnoringBatteryOptimizations: $e');
+      return false;
+    }
+  }
+
+  /// Requests the system dialog that lets the user whitelist the app
+  /// from battery optimisation. Returns the granted state.
+  ///
+  /// IMPORTANT: the user can dismiss the dialog — in that case this
+  /// returns `false` and the UI should offer a "Fix" affordance that
+  /// leads to [openAppSettingsPage] instead.
+  Future<bool> requestIgnoreBatteryOptimizations() async {
+    if (kIsWeb || !Platform.isAndroid) return true;
+    try {
+      final status =
+          await Permission.ignoreBatteryOptimizations.request();
+      debugPrint('🔋 ignoreBatteryOptimizations: $status');
+      return status.isGranted;
+    } catch (e) {
+      debugPrint('⚠️ requestIgnoreBatteryOptimizations: $e');
+      return false;
+    }
+  }
+
+  /// Opens the app's system settings so the user can manually adjust
+  /// "Battery > Unrestricted" or (Samsung) "Battery > Don't put app
+  /// to sleep". Useful as a fallback when the system dialog was
+  /// declined.
+  Future<bool> openAppSettingsPage() async {
+    try {
+      return await openAppSettings();
+    } catch (e) {
+      debugPrint('⚠️ openAppSettingsPage: $e');
+      return false;
     }
   }
 
@@ -267,14 +441,16 @@ class NotificationService {
     required String title,
     required String body,
     String channelId = 'reminders_channel',
+    String? payloadOverride,
   }) async {
     if (!_initialized) return;
     try {
-      final payload = _buildPayload(
-        title: title,
-        body: body,
-        channelId: channelId,
-      );
+      final payload = payloadOverride ??
+          _buildPayload(
+            title: title,
+            body: body,
+            channelId: channelId,
+          );
 
       await _plugin.show(id, title, body, _details(channelId),
           payload: payload);
@@ -297,6 +473,7 @@ class NotificationService {
     required String body,
     required DateTime when,
     String channelId = 'reminders_channel',
+    String? payloadOverride,
   }) async {
     if (!_initialized) return false;
 
@@ -305,7 +482,13 @@ class NotificationService {
 
     if (delay.inSeconds < 2) {
       debugPrint('⏭ id=$id in past/immediate — showing now');
-      await showNow(id: id, title: title, body: body, channelId: channelId);
+      await showNow(
+        id: id,
+        title: title,
+        body: body,
+        channelId: channelId,
+        payloadOverride: payloadOverride,
+      );
       return true;
     }
 
@@ -318,6 +501,7 @@ class NotificationService {
         body: body,
         when: when,
         channelId: channelId,
+        payloadOverride: payloadOverride,
       );
     }
 
@@ -404,6 +588,7 @@ class NotificationService {
     required String body,
     required DateTime when,
     required String channelId,
+    String? payloadOverride,
   }) async {
     final tzWhen = tz.TZDateTime(
       tz.local,
@@ -421,11 +606,12 @@ class NotificationService {
       return;
     }
 
-    final payload = _buildPayload(
-      title: title,
-      body: body,
-      channelId: channelId,
-    );
+    final payload = payloadOverride ??
+        _buildPayload(
+          title: title,
+          body: body,
+          channelId: channelId,
+        );
 
     if (_exactAlarmGranted) {
       try {
@@ -494,6 +680,24 @@ class NotificationService {
     } catch (_) {}
   }
 
+  /// Returns the payload from the notification that cold-launched the
+  /// app (tapped while the process was fully killed), or `null` if the
+  /// app was opened normally.
+  ///
+  /// Must be called after [init] has completed. Returns `null` on
+  /// platforms that don't surface launch details.
+  Future<String?> consumeLaunchPayload() async {
+    if (!_initialized) return null;
+    try {
+      final details = await _plugin.getNotificationAppLaunchDetails();
+      if (details?.didNotificationLaunchApp != true) return null;
+      return details?.notificationResponse?.payload;
+    } catch (e) {
+      debugPrint('⚠️ consumeLaunchPayload: $e');
+      return null;
+    }
+  }
+
   Future<void> cancelAll() async {
     try {
       await _plugin.cancelAll();
@@ -525,6 +729,43 @@ class NotificationService {
         debugPrint('  → id=${p.id} "${p.title}"');
       }
     } catch (_) {}
+  }
+
+  /// Dumps the full notification stack state to the console. Call
+  /// this when a notification "should have fired" but didn't — the
+  /// first failing line usually explains why.
+  Future<void> diagnose() async {
+    debugPrint('────────── 🔍 NOTIFICATION DIAGNOSTIC ──────────');
+    debugPrint('initialized: $_initialized');
+    debugPrint('alarmManagerReady: $_alarmManagerReady');
+    debugPrint('exactAlarmGranted: $_exactAlarmGranted');
+
+    final notifOn = await areNotificationsEnabled();
+    debugPrint('OS notifications enabled: $notifOn');
+
+    final batteryExempt = await isIgnoringBatteryOptimizations();
+    debugPrint('battery optimisation disabled: $batteryExempt');
+
+    if (!kIsWeb && Platform.isAndroid) {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      try {
+        final channels = await android?.getNotificationChannels() ?? [];
+        debugPrint('channels on device (${channels.length}):');
+        for (final c in channels) {
+          debugPrint(
+            '  • id=${c.id} name="${c.name}" '
+            'importance=${c.importance.value} '
+            'sound=${c.playSound} vibration=${c.enableVibration}',
+          );
+        }
+      } catch (e) {
+        debugPrint('⚠️ getNotificationChannels failed: $e');
+      }
+    }
+
+    await debugPrintPending();
+    debugPrint('──────────────────────────────────────────────');
   }
 
   // ─────────────────────────────────────────────────────────
@@ -565,13 +806,37 @@ class NotificationService {
   // ─────────────────────────────────────────────────────────
   // NOTIFICATION DETAILS
   // ─────────────────────────────────────────────────────────
-  NotificationDetails _details(String channelId) {
-    switch (channelId) {
+  /// Normalises any incoming channel id (including legacy ones) onto
+  /// the current-version id so callers never have to be updated in
+  /// lockstep with channel bumps.
+  String _resolveChannelId(String incoming) {
+    switch (incoming) {
+      case 'reminders_channel':
+      case remindersChannelId:
+        return remindersChannelId;
+      case 'meal_channel':
+      case mealsChannelId:
+        return mealsChannelId;
       case 'hydration_channel':
+      case hydrationChannelId:
+        return hydrationChannelId;
+      case 'sleep_channel':
+      case sleepChannelId:
+        return sleepChannelId;
+      default:
+        return remindersChannelId;
+    }
+  }
+
+  NotificationDetails _details(String channelId) {
+    final resolved = _resolveChannelId(channelId);
+
+    switch (resolved) {
+      case hydrationChannelId:
         return const NotificationDetails(
           android: AndroidNotificationDetails(
-            'hydration_channel',
-            'Hydration Reminders',
+            hydrationChannelId,
+            'Hydration',
             channelDescription: 'Reminders to drink water',
             importance: Importance.high,
             priority: Priority.high,
@@ -589,11 +854,11 @@ class NotificationService {
           ),
         );
 
-      case 'sleep_channel':
+      case sleepChannelId:
         return const NotificationDetails(
           android: AndroidNotificationDetails(
-            'sleep_channel',
-            'Sleep Reminders',
+            sleepChannelId,
+            'Sleep',
             channelDescription: 'Sleep and wake up reminders',
             importance: Importance.high,
             priority: Priority.high,
@@ -611,20 +876,21 @@ class NotificationService {
           ),
         );
 
-      case 'meal_channel':
+      case mealsChannelId:
         return const NotificationDetails(
           android: AndroidNotificationDetails(
-            'meal_channel',
-            'Meal Plan Reminders',
-            channelDescription:
-                'Meal plan generated + breakfast/lunch/dinner reminders',
-            importance: Importance.high,
-            priority: Priority.high,
+            mealsChannelId,
+            'Meal Reminders',
+            channelDescription: 'Pre- and post-meal glucose check-ins',
+            importance: Importance.max,
+            priority: Priority.max,
             playSound: true,
             enableVibration: true,
+            enableLights: true,
             autoCancel: true,
             visibility: NotificationVisibility.public,
             category: AndroidNotificationCategory.reminder,
+            ticker: 'Reminder',
           ),
           iOS: DarwinNotificationDetails(
             presentAlert: true,
@@ -634,21 +900,28 @@ class NotificationService {
           ),
         );
 
+      case remindersChannelId:
       default:
         return const NotificationDetails(
           android: AndroidNotificationDetails(
-            'reminders_channel',
+            remindersChannelId,
             'Reminders',
-            channelDescription: 'General reminders',
-            importance: Importance.high,
-            priority: Priority.high,
+            channelDescription: 'Glucose logging and fasting reminders',
+            importance: Importance.max,
+            priority: Priority.max,
             playSound: true,
             enableVibration: true,
+            enableLights: true,
+            autoCancel: true,
+            visibility: NotificationVisibility.public,
+            category: AndroidNotificationCategory.reminder,
+            ticker: 'Reminder',
           ),
           iOS: DarwinNotificationDetails(
             presentAlert: true,
             presentSound: true,
             presentBadge: true,
+            interruptionLevel: InterruptionLevel.timeSensitive,
           ),
         );
     }

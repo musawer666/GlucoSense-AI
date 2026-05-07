@@ -26,6 +26,15 @@ abstract class ProfileRepository {
   /// the Profile screen when the user edits a single row.
   Future<void> updateProfileFields(String uid, Map<String, dynamic> fields);
 
+  /// Writes last ML risk analysis fields on `users/{uid}` (merge).
+  Future<void> saveMlRiskAnalysis(
+    String uid, {
+    required String category,
+    required int confidencePercent,
+    required String advice,
+    required Map<String, double> probabilitiesPercent,
+  });
+
   /// Uploads [bytes] as the user's avatar and returns a public
   /// download URL. Callers should follow up with
   /// [updateProfileFields] to persist the URL under `avatarUrl`.

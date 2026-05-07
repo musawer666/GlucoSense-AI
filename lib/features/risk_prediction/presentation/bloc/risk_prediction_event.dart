@@ -22,9 +22,14 @@ final class RiskProfileFieldsPatched extends RiskPredictionEvent {
   List<Object?> get props => [fields];
 }
 
-/// Run the local heuristic over the current state.
+/// Run remote ML inference over the current profile.
 final class RiskAnalysisRequested extends RiskPredictionEvent {
   const RiskAnalysisRequested();
+}
+
+/// Clears a one-shot toast after [AiRiskAnalysisView] shows it.
+final class RiskToastAcknowledged extends RiskPredictionEvent {
+  const RiskToastAcknowledged();
 }
 
 /// Drop any cached result — e.g. after the user edits an input.
@@ -40,18 +45,18 @@ final class RiskMutationAcknowledged extends RiskPredictionEvent {
 
 // ── Internal events (private to the bloc) ─────────────────────────
 
+final class _RiskShellProfileChanged extends RiskPredictionEvent {
+  const _RiskShellProfileChanged(this.shell);
+  final ShellProfileState shell;
+
+  @override
+  List<Object?> get props => [shell];
+}
+
 final class _RiskSnapshotReceived extends RiskPredictionEvent {
   const _RiskSnapshotReceived(this.profile);
   final UserProfile? profile;
 
   @override
   List<Object?> get props => [profile];
-}
-
-final class _RiskSnapshotFailed extends RiskPredictionEvent {
-  const _RiskSnapshotFailed(this.message);
-  final String message;
-
-  @override
-  List<Object?> get props => [message];
 }

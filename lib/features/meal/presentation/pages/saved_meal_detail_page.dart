@@ -7,6 +7,7 @@ import '../../../../core/widgets/app_result_dialog.dart';
 import '../../../../core/widgets/gluco_sliver_app_bar.dart';
 import '../../../auth/data/datasources/auth_remote_data_source.dart';
 import '../../../auth/data/repositories/auth_repository_impl.dart';
+import '../../../reminders/presentation/widgets/gluco_app_bar_reminders_actions.dart';
 import '../../data/datasources/saved_meal_remote_data_source.dart';
 import '../../data/repositories/saved_meal_repository_impl.dart';
 import '../../domain/entities/saved_meal.dart';
@@ -80,7 +81,10 @@ class _SavedMealDetailView extends StatelessWidget {
           return MealPredictorBackground(
             child: CustomScrollView(
               slivers: [
-                const GlucoSliverAppBar(title: 'Saved Meal'),
+                GlucoSliverAppBar(
+                  title: 'Saved Meal',
+                  actions: glucoAppBarRemindersActions(),
+                ),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
@@ -205,7 +209,10 @@ class _LoadingShell extends StatelessWidget {
     return MealPredictorBackground(
       child: CustomScrollView(
         slivers: [
-          const GlucoSliverAppBar(title: 'Saved Meal'),
+          GlucoSliverAppBar(
+            title: 'Saved Meal',
+            actions: glucoAppBarRemindersActions(),
+          ),
           SliverFillRemaining(
             hasScrollBody: false,
             child: Center(
@@ -226,7 +233,10 @@ class _DeletedState extends StatelessWidget {
     return MealPredictorBackground(
       child: CustomScrollView(
         slivers: [
-          const GlucoSliverAppBar(title: 'Saved Meal'),
+          GlucoSliverAppBar(
+            title: 'Saved Meal',
+            actions: glucoAppBarRemindersActions(),
+          ),
           SliverFillRemaining(
             hasScrollBody: false,
             child: Padding(

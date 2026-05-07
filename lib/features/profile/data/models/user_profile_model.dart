@@ -35,6 +35,11 @@ class UserProfileModel extends UserProfile {
     super.avatarUrl,
     super.profileComplete,
     super.profileCompletedAt,
+    super.lastMlRiskCategory,
+    super.lastMlRiskConfidence,
+    super.lastMlRiskAdvice,
+    super.lastMlRiskProbabilities,
+    super.lastMlRiskAt,
   });
 
   /// Payload used with `set(..., SetOptions(merge: true))` so it does
@@ -84,6 +89,7 @@ class UserProfileModel extends UserProfile {
   factory UserProfileModel.fromMap(Map<String, dynamic> map, String id) {
     final ts = map['profileCompletedAt'];
     final lastAt = map['lastLogAt'];
+    final lastRiskAt = map['lastMlRiskAt'];
     return UserProfileModel(
       uid: (map['uid'] as String?) ?? id,
       email: map['email'] as String?,
@@ -112,7 +118,25 @@ class UserProfileModel extends UserProfile {
       avatarUrl: map['avatarUrl'] as String?,
       profileComplete: (map['profileComplete'] as bool?) ?? false,
       profileCompletedAt: ts is Timestamp ? ts.toDate() : null,
+      lastMlRiskCategory: map['lastMlRiskCategory'] as String?,
+      lastMlRiskConfidence: _asInt(map['lastMlRiskConfidence']),
+      lastMlRiskAdvice: map['lastMlRiskAdvice'] as String?,
+      lastMlRiskProbabilities: _probabilitiesFromMap(map['lastMlRiskProbabilities']),
+      lastMlRiskAt:
+          lastRiskAt is Timestamp ? lastRiskAt.toDate() : null,
     );
+  }
+
+  static Map<String, double>? _probabilitiesFromMap(Object? raw) {
+    if (raw is! Map) return null;
+    final out = <String, double>{};
+    for (final e in raw.entries) {
+      final v = e.value;
+      if (v is num) {
+        out[e.key.toString()] = v.toDouble();
+      }
+    }
+    return out.isEmpty ? null : out;
   }
 
   static int? _asInt(Object? v) {

@@ -14,6 +14,15 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Required so scheduled alarms can wake the CPU and fire the
+         notification when the screen is off. Without this, OEM power
+         management (especially Samsung One UI) silently drops alarms. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Lets the app request to be excluded from battery optimisation
+         (Doze / App Standby). Aggressive OEMs (Samsung, Xiaomi, Oppo,
+         Vivo) otherwise put the app to sleep and cancel all pending
+         AlarmManager alarms. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <application
         android:label="glucosense_ai"
         android:name="${applicationName}"
@@ -45,6 +54,35 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- ─────────────────────────────────────────────────────
+             flutter_local_notifications v16+ receivers.
+             Since v16 the plugin NO LONGER declares these itself.
+             Without them, scheduled notifications (zonedSchedule)
+             silently never fire because the AlarmManager broadcast
+             has no receiver to route to.
+
+             1) ScheduledNotificationReceiver — fired by AlarmManager
+                when a scheduled notification's time hits. Actually
+                posts the notification to the notification manager.
+
+             2) ScheduledNotificationBootReceiver — re-schedules all
+                pending notifications after device reboot / app
+                update so alarms survive those events.
+             ───────────────────────────────────────────────────── -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

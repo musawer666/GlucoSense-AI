@@ -3,17 +3,23 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/colors/app_colors.dart';
+import '../../../../core/services/reminder_scheduler.dart';
 import '../../../../core/widgets/app_loader.dart' show AppInlineLoader;
 import '../../../../core/widgets/app_result_dialog.dart';
 import '../../../../core/widgets/gluco_sliver_app_bar.dart';
 import '../../../../core/widgets/soft_blob_background.dart';
+import '../../../profile/presentation/cubit/shell_profile_cubit.dart';
 import '../../../auth/data/datasources/auth_remote_data_source.dart';
 import '../../../auth/data/repositories/auth_repository_impl.dart';
+import '../../../reminders/domain/entities/reminder_tap_payload.dart';
+import '../../../reminders/presentation/widgets/gluco_app_bar_reminders_actions.dart';
 import '../../data/datasources/glucose_log_remote_data_source.dart';
 import '../../data/repositories/glucose_log_repository_impl.dart';
 import '../../domain/glucose_log_entry.dart';
 import '../cubit/log_reading_cubit.dart';
 import '../cubit/log_reading_state.dart';
+import '../../../risk_prediction/domain/services/saved_ml_risk_mapper.dart';
+import '../widgets/log_saved_ml_risk_card.dart';
 import '../widgets/animated_section.dart';
 import '../widgets/form_section_label.dart';
 import '../widgets/glucose_classification_badge.dart';
@@ -41,13 +47,14 @@ class LogReadingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider<LogReadingCubit>(
-      create: (_) => LogReadingCubit(
+      create: (context) => LogReadingCubit(
         logRepository: GlucoseLogRepositoryImpl(
           remoteDataSource: GlucoseLogRemoteDataSourceImpl(),
         ),
         authRepository: AuthRepositoryImpl(
           remoteDataSource: AuthRemoteDataSourceImpl(),
         ),
+        shellProfileCubit: context.read<ShellProfileCubit>(),
       )..subscribe(),
       child: const _LogReadingView(),
     );
@@ -65,7 +72,36 @@ class _LogReadingViewState extends State<_LogReadingView> {
   final TextEditingController _glucoseController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    // Consume any pending reminder-tap payload ASAP so the form lands
+    // pre-filled to the right meal/reading type.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeConsumeDeeplink());
+    ReminderScheduler.instance.pendingTap.addListener(_onPendingTapChanged);
+  }
+
+  void _onPendingTapChanged() {
+    if (!mounted) return;
+    _maybeConsumeDeeplink();
+  }
+
+  void _maybeConsumeDeeplink() {
+    final payload = ReminderScheduler.instance.consumePendingTap();
+    if (payload == null || !mounted) return;
+    _applyPayload(payload);
+  }
+
+  void _applyPayload(ReminderTapPayload payload) {
+    final cubit = context.read<LogReadingCubit>();
+    cubit.applyDeeplink(
+      readingType: payload.readingType,
+      mealTag: payload.mealTag,
+    );
+  }
+
+  @override
   void dispose() {
+    ReminderScheduler.instance.pendingTap.removeListener(_onPendingTapChanged);
     _glucoseController.dispose();
     super.dispose();
   }
@@ -140,6 +176,7 @@ class _LogReadingViewState extends State<_LogReadingView> {
         final saving = state.uiStatus == LogReadingUiStatus.saving;
         final parsedGlucose = _parseGlucose(state.glucoseText);
         final streak = computeLoggingStreak(state.recentLogs);
+        final savedRisk = savedMlRiskFromUserProfile(state.profile);
 
         return SoftBlobBackground(
           child: LayoutBuilder(
@@ -149,7 +186,10 @@ class _LogReadingViewState extends State<_LogReadingView> {
               return CustomScrollView(
                 physics: const BouncingScrollPhysics(),
                 slivers: [
-                  const GlucoSliverAppBar(title: 'Log Reading'),
+                  GlucoSliverAppBar(
+                    title: 'Log Reading',
+                    actions: glucoAppBarRemindersActions(),
+                  ),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(pad, 18, pad, 120),
@@ -168,6 +208,16 @@ class _LogReadingViewState extends State<_LogReadingView> {
                             delay: const Duration(milliseconds: 140),
                             child: TodaySummaryStrip(logs: state.recentLogs),
                           ),
+                          if (savedRisk != null) ...[
+                            const SizedBox(height: 18),
+                            AnimatedSection(
+                              delay: const Duration(milliseconds: 180),
+                              child: LogSavedMlRiskCard(
+                                result: savedRisk,
+                                analyzedAt: state.profile?.lastMlRiskAt,
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 20),
                           AnimatedSection(
                             delay: const Duration(milliseconds: 220),

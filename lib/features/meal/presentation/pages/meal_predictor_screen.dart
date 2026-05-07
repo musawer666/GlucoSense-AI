@@ -6,9 +6,9 @@ import '../../../../core/colors/app_colors.dart';
 import '../../../../core/widgets/app_result_dialog.dart';
 import '../../../../core/widgets/gluco_sliver_app_bar.dart';
 import '../../../auth/data/datasources/auth_remote_data_source.dart';
+import '../../../reminders/presentation/widgets/gluco_app_bar_reminders_actions.dart';
 import '../../../auth/data/repositories/auth_repository_impl.dart';
-import '../../../profile/data/datasources/profile_remote_data_source.dart';
-import '../../../profile/data/repositories/profile_repository_impl.dart';
+import '../../../profile/presentation/cubit/shell_profile_cubit.dart';
 import '../../data/datasources/saved_meal_remote_data_source.dart';
 import '../../data/repositories/meal_analysis_repository_impl.dart';
 import '../../data/repositories/saved_meal_repository_impl.dart';
@@ -34,10 +34,8 @@ class MealPredictorScreen extends StatelessWidget {
     return MultiBlocProvider(
       providers: [
         BlocProvider<MealPredictorCubit>(
-          create: (_) => MealPredictorCubit(
-            profileRepository: ProfileRepositoryImpl(
-              remoteDataSource: ProfileRemoteDataSourceImpl(),
-            ),
+          create: (context) => MealPredictorCubit(
+            shellProfileCubit: context.read<ShellProfileCubit>(),
             authRepository: AuthRepositoryImpl(
               remoteDataSource: AuthRemoteDataSourceImpl(),
             ),
@@ -280,7 +278,10 @@ class _MealPredictorView extends StatelessWidget {
             return MealPredictorBackground(
               child: CustomScrollView(
                 slivers: [
-                  const GlucoSliverAppBar(title: 'Meal Predictor'),
+                  GlucoSliverAppBar(
+                    title: 'Meal Predictor',
+                    actions: glucoAppBarRemindersActions(),
+                  ),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(pad, 18, pad, 24),

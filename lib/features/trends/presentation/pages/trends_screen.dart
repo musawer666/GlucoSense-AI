@@ -12,6 +12,7 @@ import '../../../auth/data/repositories/auth_repository_impl.dart';
 import '../../../log_reading/data/datasources/glucose_log_remote_data_source.dart';
 import '../../../log_reading/data/repositories/glucose_log_repository_impl.dart';
 import '../../../log_reading/domain/glucose_log_entry.dart';
+import '../../../reminders/presentation/widgets/gluco_app_bar_reminders_actions.dart';
 import '../cubit/trends_cubit.dart';
 
 class TrendsScreen extends StatelessWidget {
@@ -93,10 +94,10 @@ class _TrendsViewState extends State<_TrendsView> {
                       state.logs.isEmpty) {
                     return CustomScrollView(
                       slivers: [
-                        const GlucoSliverAppBar(
+                        GlucoSliverAppBar(
                           title: 'Trends & Analytics',
                           subtitle: 'Live readings from your log',
-                          showBackButton: true,
+                          actions: glucoAppBarRemindersActions(),
                         ),
                         SliverFillRemaining(
                           hasScrollBody: false,
@@ -169,10 +170,10 @@ class _TrendsViewState extends State<_TrendsView> {
                       parent: AlwaysScrollableScrollPhysics(),
                     ),
                     slivers: [
-                      const GlucoSliverAppBar(
+                      GlucoSliverAppBar(
                         title: 'Trends & Analytics',
                         subtitle: 'Live readings from your log',
-                        showBackButton: true,
+                        actions: glucoAppBarRemindersActions(),
                       ),
                       SliverToBoxAdapter(
                         child: Padding(

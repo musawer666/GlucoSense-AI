@@ -1,5 +1,4 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:glucosense_ai/features/splash/presentation/pages/splash_screen.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -8,6 +7,7 @@ import 'core/colors/app_colors.dart';
 import 'core/services/firebase_options.dart';
 import 'core/services/notification_history/history_services/services.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/reminder_scheduler.dart';
 import 'core/widgets/app_text_scale_scope.dart';
 
 void main() async {
@@ -23,12 +23,21 @@ void main() async {
   runApp(const GlucoSenseApp());
 }
 
-/// Safely boots the notification stack. Any failure is logged but never
-/// propagates, so the splash screen always renders.
+
 Future<void> _bootstrapNotifications() async {
   try {
     await NotificationHistoryService.instance.init();
     await NotificationService.instance.init();
+
+    NotificationService.instance.onForegroundTap = (response) {
+      ReminderScheduler.instance.ingestTapPayload(response.payload);
+    };
+
+    final launchPayload =
+        await NotificationService.instance.consumeLaunchPayload();
+    if (launchPayload != null) {
+      ReminderScheduler.instance.ingestTapPayload(launchPayload);
+    }
   } catch (e, st) {
     debugPrint('❌ Notification bootstrap failed: $e');
     debugPrintStack(stackTrace: st);

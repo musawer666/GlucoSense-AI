@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../../../../core/errors/firebase_error_mapper.dart';
 import '../../domain/entities/user_profile.dart';
 import '../../domain/repositories/profile_repository.dart';
@@ -44,6 +46,11 @@ class ProfileRepositoryImpl implements ProfileRepository {
               lastLogType: profile.lastLogType,
               lastLogAt: profile.lastLogAt,
               avatarUrl: profile.avatarUrl,
+              lastMlRiskCategory: profile.lastMlRiskCategory,
+              lastMlRiskConfidence: profile.lastMlRiskConfidence,
+              lastMlRiskAdvice: profile.lastMlRiskAdvice,
+              lastMlRiskProbabilities: profile.lastMlRiskProbabilities,
+              lastMlRiskAt: profile.lastMlRiskAt,
             );
       return await remoteDataSource.saveProfileSetup(model);
     } catch (error) {
@@ -77,6 +84,27 @@ class ProfileRepositoryImpl implements ProfileRepository {
   ) async {
     try {
       await remoteDataSource.updateProfileFields(uid, fields);
+    } catch (error) {
+      throw mapAnyError(error);
+    }
+  }
+
+  @override
+  Future<void> saveMlRiskAnalysis(
+    String uid, {
+    required String category,
+    required int confidencePercent,
+    required String advice,
+    required Map<String, double> probabilitiesPercent,
+  }) async {
+    try {
+      await remoteDataSource.updateProfileFields(uid, {
+        'lastMlRiskCategory': category,
+        'lastMlRiskConfidence': confidencePercent,
+        'lastMlRiskAdvice': advice,
+        'lastMlRiskProbabilities': probabilitiesPercent,
+        'lastMlRiskAt': FieldValue.serverTimestamp(),
+      });
     } catch (error) {
       throw mapAnyError(error);
     }

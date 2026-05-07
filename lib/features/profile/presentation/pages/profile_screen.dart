@@ -12,9 +12,11 @@ import '../../../../core/widgets/gluco_sliver_app_bar.dart';
 import '../../../auth/data/datasources/auth_remote_data_source.dart';
 import '../../../auth/data/repositories/auth_repository_impl.dart';
 import '../../../auth/presentation/pages/login_screen.dart';
+import '../../../reminders/presentation/widgets/gluco_app_bar_reminders_actions.dart';
 import '../../data/datasources/profile_remote_data_source.dart';
 import '../../data/repositories/profile_repository_impl.dart';
 import '../../data/user_profile_store.dart';
+import '../cubit/shell_profile_cubit.dart';
 import '../../domain/entities/user_profile.dart';
 import '../../domain/profile_display_data.dart';
 import '../bloc/profile_bloc.dart';
@@ -30,13 +32,14 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider<ProfileBloc>(
-      create: (_) => ProfileBloc(
+      create: (context) => ProfileBloc(
         profileRepository: ProfileRepositoryImpl(
           remoteDataSource: ProfileRemoteDataSourceImpl(),
         ),
         authRepository: AuthRepositoryImpl(
           remoteDataSource: AuthRemoteDataSourceImpl(),
         ),
+        shellProfileCubit: context.read<ShellProfileCubit>(),
       )..add(const ProfileSubscribed()),
       child: const _ProfileView(),
     );
@@ -385,9 +388,12 @@ class _ProfileLoadingScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const CustomScrollView(
+    return CustomScrollView(
       slivers: [
-        GlucoSliverAppBar(title: 'Profile'),
+        GlucoSliverAppBar(
+          title: 'Profile',
+          actions: glucoAppBarRemindersActions(),
+        ),
         SliverFillRemaining(
           hasScrollBody: false,
           child: Center(
@@ -410,7 +416,10 @@ class _ProfileMissingScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomScrollView(
       slivers: [
-        const GlucoSliverAppBar(title: 'Profile'),
+        GlucoSliverAppBar(
+          title: 'Profile',
+          actions: glucoAppBarRemindersActions(),
+        ),
         SliverFillRemaining(
           hasScrollBody: false,
           child: Padding(
@@ -446,7 +455,10 @@ class _ProfileErrorScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomScrollView(
       slivers: [
-        const GlucoSliverAppBar(title: 'Profile'),
+        GlucoSliverAppBar(
+          title: 'Profile',
+          actions: glucoAppBarRemindersActions(),
+        ),
         SliverFillRemaining(
           hasScrollBody: false,
           child: Padding(
@@ -507,7 +519,10 @@ class _ProfileLoaded extends StatelessWidget {
 
     return CustomScrollView(
       slivers: [
-        const GlucoSliverAppBar(title: 'Profile'),
+        GlucoSliverAppBar(
+          title: 'Profile',
+          actions: glucoAppBarRemindersActions(),
+        ),
         SliverToBoxAdapter(
           child: Padding(
             padding: EdgeInsets.fromLTRB(

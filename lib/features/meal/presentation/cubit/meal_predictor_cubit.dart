@@ -7,7 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../auth/domain/repositories/auth_repository.dart';
 import '../../../profile/domain/entities/user_profile.dart';
-import '../../../profile/domain/repositories/profile_repository.dart';
+import '../../../profile/presentation/cubit/shell_profile_cubit.dart';
 import '../../domain/entities/meal_photo_analysis.dart';
 import '../../domain/repositories/meal_analysis_repository.dart';
 
@@ -29,19 +29,19 @@ part 'meal_predictor_state.dart';
 /// reused from the Home tab without coupling to this predictor flow.
 class MealPredictorCubit extends Cubit<MealPredictorState> {
   MealPredictorCubit({
-    required ProfileRepository profileRepository,
+    required ShellProfileCubit shellProfileCubit,
     required AuthRepository authRepository,
     required MealAnalysisRepository mealAnalysisRepository,
-  })  : _profileRepository = profileRepository,
+  })  : _shell = shellProfileCubit,
         _authRepository = authRepository,
         _mealAnalysisRepository = mealAnalysisRepository,
         super(const MealPredictorState());
 
-  final ProfileRepository _profileRepository;
+  final ShellProfileCubit _shell;
   final AuthRepository _authRepository;
   final MealAnalysisRepository _mealAnalysisRepository;
 
-  StreamSubscription<UserProfile?>? _profileSub;
+  StreamSubscription<ShellProfileState>? _shellSub;
 
   /// Kicks off the profile stream. Safe to call multiple times —
   /// the previous subscription (if any) is cancelled first.
@@ -60,26 +60,49 @@ class MealPredictorCubit extends Cubit<MealPredictorState> {
       clearError: true,
     ));
 
-    await _profileSub?.cancel();
-    _profileSub = _profileRepository.watchProfile(user.uid).listen(
-      (profile) {
-        emit(state.copyWith(
-          status: MealPredictorStatus.ready,
-          profile: profile,
-          clearProfile: profile == null,
-          clearError: true,
-        ));
-      },
-      onError: (Object error) {
-        final message = error is Failure
-            ? error.message
-            : 'Failed to load your latest glucose reading.';
-        emit(state.copyWith(
-          status: MealPredictorStatus.failure,
-          errorMessage: message,
-        ));
-      },
-    );
+    await _shellSub?.cancel();
+    void applyShell(ShellProfileState shell) {
+      switch (shell.status) {
+        case ShellProfileStatus.signedOut:
+          emit(state.copyWith(
+            status: MealPredictorStatus.failure,
+            errorMessage: 'You need to be signed in to analyse meals.',
+          ));
+          break;
+        case ShellProfileStatus.initial:
+        case ShellProfileStatus.loading:
+          emit(state.copyWith(
+            status: MealPredictorStatus.loading,
+            clearError: true,
+          ));
+          break;
+        case ShellProfileStatus.failure:
+          emit(state.copyWith(
+            status: MealPredictorStatus.failure,
+            errorMessage: shell.errorMessage ??
+                'Failed to load your latest glucose reading.',
+          ));
+          break;
+        case ShellProfileStatus.missingProfile:
+          emit(state.copyWith(
+            status: MealPredictorStatus.ready,
+            clearProfile: true,
+            clearError: true,
+          ));
+          break;
+        case ShellProfileStatus.ready:
+          emit(state.copyWith(
+            status: MealPredictorStatus.ready,
+            profile: shell.profile,
+            clearProfile: shell.profile == null,
+            clearError: true,
+          ));
+          break;
+      }
+    }
+
+    applyShell(_shell.state);
+    _shellSub = _shell.stream.listen(applyShell);
   }
 
   /// Called when the user taps the edit icon on the glucose card.
@@ -170,8 +193,8 @@ class MealPredictorCubit extends Cubit<MealPredictorState> {
 
   @override
   Future<void> close() async {
-    await _profileSub?.cancel();
-    _profileSub = null;
+    await _shellSub?.cancel();
+    _shellSub = null;
     return super.close();
   }
 }

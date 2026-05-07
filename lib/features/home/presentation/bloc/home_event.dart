@@ -13,20 +13,12 @@ final class HomeSubscribed extends HomeEvent {
 
 // ── Internal events ───────────────────────────────────────────────
 
-final class _HomeSnapshotReceived extends HomeEvent {
-  const _HomeSnapshotReceived(this.profile);
-  final UserProfile? profile;
+final class _HomeShellProfileChanged extends HomeEvent {
+  const _HomeShellProfileChanged(this.shell);
+  final ShellProfileState shell;
 
   @override
-  List<Object?> get props => [profile];
-}
-
-final class _HomeSnapshotFailed extends HomeEvent {
-  const _HomeSnapshotFailed(this.message);
-  final String message;
-
-  @override
-  List<Object?> get props => [message];
+  List<Object?> get props => [shell];
 }
 
 final class _HomeLogsReceived extends HomeEvent {
