@@ -81,14 +81,15 @@ class NotificationService {
 
       String tzName;
       try {
-        tzName = await FlutterTimezone.getLocalTimezone();
+        final tzInfo = await FlutterTimezone.getLocalTimezone();
+        tzName = tzInfo.identifier;
       } catch (e) {
         tzName = _timezoneFromOffset(deviceOffsetMin);
       }
 
       tz.setLocalLocation(tz.getLocation(tzName));
 
-      final tzOffsetMin = tz.local.currentTimeZone.offset ~/ 60000;
+      final tzOffsetMin = tz.local.currentTimeZone.offset.inMinutes;
       final drift = (deviceOffsetMin - tzOffsetMin).abs();
 
       _alarmManagerReady = true;
@@ -121,8 +122,10 @@ class NotificationService {
     );
 
     await _plugin.initialize(
-      const InitializationSettings(
-          android: androidSettings, iOS: iosSettings),
+      settings: const InitializationSettings(
+        android: androidSettings,
+        iOS: iosSettings,
+      ),
       onDidReceiveNotificationResponse: _onNotificationFired,
       onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
@@ -244,7 +247,7 @@ class NotificationService {
     //    onto their stale, silenced config.
     for (final legacyId in _legacyChannelIds) {
       try {
-        await android.deleteNotificationChannel(legacyId);
+        await android.deleteNotificationChannel(channelId: legacyId);
       } catch (_) {
         // Deletion fails silently when the channel doesn't exist —
         // that's fine.
@@ -452,8 +455,13 @@ class NotificationService {
             channelId: channelId,
           );
 
-      await _plugin.show(id, title, body, _details(channelId),
-          payload: payload);
+      await _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: _details(channelId),
+        payload: payload,
+      );
       debugPrint('📢 NOW id=$id "$title"');
 
       // For instant notifications, save to history immediately
@@ -616,14 +624,12 @@ class NotificationService {
     if (_exactAlarmGranted) {
       try {
         await _plugin.zonedSchedule(
-          id,
-          title,
-          body,
-          tzWhen,
-          _details(channelId),
+          id: id,
+          title: title,
+          body: body,
+          scheduledDate: tzWhen,
+          notificationDetails: _details(channelId),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
           payload: payload,
         );
         debugPrint('  + AlarmManager backup (exact) ✓ ($tzWhen)');
@@ -655,14 +661,12 @@ class NotificationService {
 
     try {
       await _plugin.zonedSchedule(
-        id,
-        title,
-        body,
-        tzWhen,
-        _details(channelId),
+        id: id,
+        title: title,
+        body: body,
+        scheduledDate: tzWhen,
+        notificationDetails: _details(channelId),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
         payload: payload,
       );
       debugPrint('  + AlarmManager backup (inexact) ✓ ($tzWhen)');
@@ -676,7 +680,7 @@ class NotificationService {
   // ─────────────────────────────────────────────────────────
   Future<void> cancel(int id) async {
     try {
-      await _plugin.cancel(id);
+      await _plugin.cancel(id: id);
     } catch (_) {}
   }
 
@@ -708,7 +712,7 @@ class NotificationService {
     for (int i = 0; i < count; i++) {
       final id = start + i;
       try {
-        await _plugin.cancel(id);
+        await _plugin.cancel(id: id);
       } catch (_) {}
     }
   }
